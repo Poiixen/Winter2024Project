@@ -1,20 +1,23 @@
+import pygame as pg
 import numpy as np
-import numpy.random
-import pygame
-import sys
 from numba import njit
+import sys
 
-# Setup pygame/window #
-mainClock = pygame.time.Clock()
+mainClock = pg.time.Clock()
 from pygame.locals import *
 
-pygame.init()
-pygame.display.set_caption('Game Base')
-
+pg.init()
+pg.display.set_caption('Game Base')
 # Main Menu Window
-menu_screen = pygame.display.set_mode((1280, 720), 0, 32)
+menu_screen = pg.display.set_mode((1280, 720), 0, 32)
 
-font = pygame.font.SysFont(None, 36)
+font = pg.font.SysFont(None, 36)
+
+click = False
+
+
+def main():
+    main_menu()
 
 
 def draw_text(text, font, color, surface, x, y):
@@ -24,20 +27,17 @@ def draw_text(text, font, color, surface, x, y):
     surface.blit(textobj, textrect)
 
 
-click = False
-
-
 def main_menu():
     global click
     while True:
         menu_screen.fill((0, 0, 0))
         draw_text('Main Menu', font, (255, 255, 255), menu_screen, 640, 50)
 
-        mx, my = pygame.mouse.get_pos()
+        mx, my = pg.mouse.get_pos()
 
         button_width, button_height = 300, 100
-        button_1 = pygame.Rect((menu_screen.get_width() - button_width) // 2, 200, button_width, button_height)
-        button_2 = pygame.Rect((menu_screen.get_width() - button_width) // 2, 350, button_width, button_height)
+        button_1 = pg.Rect((menu_screen.get_width() - button_width) // 2, 200, button_width, button_height)
+        button_2 = pg.Rect((menu_screen.get_width() - button_width) // 2, 350, button_width, button_height)
         if button_1.collidepoint((mx, my)):
             if click:
                 open_game_window()
@@ -45,109 +45,127 @@ def main_menu():
             if click:
                 options()
 
-        pygame.draw.rect(menu_screen, (255, 0, 0), button_1)
-        pygame.draw.rect(menu_screen, (255, 0, 0), button_2)
+        pg.draw.rect(menu_screen, (255, 0, 0), button_1)
+        pg.draw.rect(menu_screen, (255, 0, 0), button_2)
 
         draw_text('Play', font, (255, 255, 255), menu_screen, menu_screen.get_width() // 2, 250)
         draw_text('Options', font, (255, 255, 255), menu_screen, menu_screen.get_width() // 2, 400)
 
         click = False
-        for event in pygame.event.get():
+        for event in pg.event.get():
             if event.type == QUIT:
-                pygame.quit()
+                pg.quit()
                 sys.exit()
             if event.type == KEYDOWN:
                 if event.key == K_ESCAPE:
-                    pygame.quit()
+                    pg.quit()
                     sys.exit()
             if event.type == MOUSEBUTTONDOWN:
                 if event.button == 1:
                     click = True
 
-        pygame.display.update()
+        pg.display.update()
         mainClock.tick(60)
 
 
 def open_game_window():
-    game_screen = pygame.display.set_mode((1280, 720), 0, 32)
 
+    screen = pg.display.set_mode((1280, 720))
     running = True
-    hRes = 120  # horizontal resolution
-    halfVres = 100  # vertical resolution divided by 2
-    mod = hRes / 60  # scaling factor 60 fov
+    clock = pg.time.Clock()
+    pg.mouse.set_visible(False)
+    pg.event.set_grab(1)
+
+    hres = 250  # horizontal resolution
+    halfvres = int(hres * 0.375)  # vertical resolution/2
+    mod = hres / 60  # scaling factor (60° fov)
+
     size = 25
+    nenemies = size * 2  # number of enemies
     posx, posy, rot, maph, mapc, exitx, exity = gen_map(size)
+    player_health = 10
+    rotv = 0
 
-    """
-    maph = numpy.random.choice([0, 0, 0, 1], (size, size))
+    frame = np.random.uniform(0, 1, (hres, halfvres * 2, 3))
+    sky = pg.image.load('skybox.png')
+    sky = pg.surfarray.array3d(pg.transform.smoothscale(sky, (720, halfvres * 2))) / 255
+    floor = pg.surfarray.array3d(pg.image.load('floor.jpg')) / 255
+    wall = pg.surfarray.array3d(pg.image.load('wall.jpg')) / 255
+    sprites, spsize, sword, swordsp = get_sprites(hres)
 
-    # making walls different colors
-    mapc = np.random.uniform(0, 1, (size, size, 3))
-    """
-    frame = numpy.random.uniform(0, 1, (hRes, halfVres * 2, 3))
-    sky = pygame.image.load('skybox.png')
-    sky = pygame.surfarray.array3d(pygame.transform.scale(sky, (360, halfVres * 2))) / 255
-    floor = pygame.surfarray.array3d(pygame.image.load('floor.jpg')) / 255
-    wall = pygame.surfarray.array3d(pygame.image.load('wall2.jpg')) / 255
+    enemies = spawn_enemies(nenemies, maph, size)
 
     while running:
-        if int(posx) == exitx and int(posy) == exity:
-            print("your not that good relax buddy")
+        ticks = pg.time.get_ticks() / 200
+        er = min(clock.tick() / 500, 0.3)
+        if player_health < 0:
+            print("You died")
+            death_screen()
             running = False
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+        if int(posx) == exitx and int(posy) == exity:
+            if nenemies < size:
+                print("You got out of the maze")
+                pg.time.wait(1000)
                 running = False
+            elif int(ticks % 10 + 0.9) == 0:
+                print("There is still work to do")
+        for event in pg.event.get():
+            if event.type == pg.QUIT or event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
+                running = False
+            if swordsp < 1 and event.type == pg.MOUSEBUTTONDOWN:
+                swordsp = 1
 
-        frame = new_frame(posx, posy, rot, frame, sky, floor, hRes, halfVres, mod, maph, size, wall, mapc, exity, exitx)
+        frame = new_frame(posx, posy, rot, frame, sky, floor, hres, halfvres, mod, maph, size,
+                          wall, mapc, exitx, exity)
+        surf = pg.surfarray.make_surface(frame * 255)
 
-        surf = pygame.surfarray.make_surface(frame * 255)
-        surf = pygame.transform.scale(surf, (1280, 720))
-        fps = int(mainClock.get_fps())
-        pygame.display.set_caption("Jason's winter Project 2024 - FPS: " + str(fps))
+        enemies = sort_sprites(posx, posy, rot, enemies, maph, size, er / 5)
+        surf, en = draw_sprites(surf, sprites, enemies, spsize, hres, halfvres, ticks, sword, swordsp)
 
-        game_screen.blit(surf, (0, 0))
-        pygame.display.update()
+        surf = pg.transform.scale(surf, (1280, 720))
 
-        posx, posy, rot = movement(posx, posy, rot, maph, mainClock.tick()/500)
+        if int(swordsp) > 0:
+            if swordsp == 1 and 1 < enemies[en][3] < 10:
+                enemies[en][0] = 0
+                nenemies = nenemies - 1
+            swordsp = (swordsp + er * 5) % 4
 
-    # Return to the main menu after the game loop exits
+        screen.blit(surf, (0, 0))
+        pg.display.update()
+        fps = int(clock.get_fps())
+        pg.display.set_caption("Enemies remaining: " + str(nenemies) + " - FPS: " + str(fps))
+        posx, posy, rot = movement(pg.key.get_pressed(), posx, posy, rot, maph, er)
     main_menu()
 
 
-def movement(posx, posy, rot, maph, et):
-    # Get currently pressed keys
-    pressed_keys = pygame.key.get_pressed()
-    x, y, diag = posx, posy, rot
+def movement(pressed_keys, posx, posy, rot, maph, et):
+    x, y, rot0, diag = posx, posy, rot, 0
+    if pg.mouse.get_focused():
+        p_mouse = pg.mouse.get_rel()
+        rot = rot + np.clip((p_mouse[0]) / 200, -0.2, .2)
 
-    # Update rotation based on mouse movement
-    p_mouse = pygame.mouse.get_rel()
-    rot = rot + np.clip((p_mouse[0]) / 200, -0.2, 0.2)
-
-    # Handle movement in the forward direction
-    if pressed_keys[pygame.K_UP] or pressed_keys[ord('w')]:
+    if pressed_keys[pg.K_UP] or pressed_keys[ord('w')]:
         x, y, diag = x + et * np.cos(rot), y + et * np.sin(rot), 1
 
-    # Handle movement in the backward direction
-    elif pressed_keys[pygame.K_DOWN] or pressed_keys[ord('s')]:
+    elif pressed_keys[pg.K_DOWN] or pressed_keys[ord('s')]:
         x, y, diag = x - et * np.cos(rot), y - et * np.sin(rot), 1
 
-    # Handle strafing left
-    if pressed_keys[pygame.K_LEFT] or pressed_keys[ord('a')]:
+    if pressed_keys[pg.K_LEFT] or pressed_keys[ord('a')]:
         et = et / (diag + 1)
         x, y = x + et * np.sin(rot), y - et * np.cos(rot)
 
-    # Handle strafing right
-    elif pressed_keys[pygame.K_RIGHT] or pressed_keys[ord('d')]:
+    elif pressed_keys[pg.K_RIGHT] or pressed_keys[ord('d')]:
         et = et / (diag + 1)
         x, y = x - et * np.sin(rot), y + et * np.cos(rot)
 
-    # Check collisions with walls and update position
     if not (maph[int(x - 0.2)][int(y)] or maph[int(x + 0.2)][int(y)] or
             maph[int(x)][int(y - 0.2)] or maph[int(x)][int(y + 0.2)]):
         posx, posy = x, y
+
     elif not (maph[int(posx - 0.2)][int(y)] or maph[int(posx + 0.2)][int(y)] or
               maph[int(posx)][int(y - 0.2)] or maph[int(posx)][int(y + 0.2)]):
         posy = y
+
     elif not (maph[int(x - 0.2)][int(posy)] or maph[int(x + 0.2)][int(posy)] or
               maph[int(x)][int(posy - 0.2)] or maph[int(x)][int(posy + 0.2)]):
         posx = x
@@ -156,11 +174,11 @@ def movement(posx, posy, rot, maph, et):
 
 
 def gen_map(size):
-    mapc = numpy.random.uniform(0, 1, (size, size, 3))
-    maph = numpy.random.choice([0, 0, 0, 0, 1, 1], (size, size))
+    mapc = np.random.uniform(0, 1, (size, size, 3))
+    maph = np.random.choice([0, 0, 0, 0, 1, 1], (size, size))
     maph[0, :], maph[size - 1, :], maph[:, 0], maph[:, size - 1] = (1, 1, 1, 1)
 
-    posx, posy, rot = 1.5, numpy.random.randint(1, size - 1) + .5, np.pi / 4
+    posx, posy, rot = 1.5, np.random.randint(1, size - 1) + .5, np.pi / 4
     x, y = int(posx), int(posy)
     maph[x][y] = 0
     count = 0
@@ -184,83 +202,176 @@ def gen_map(size):
 
 
 @njit()
-def new_frame(posx, posy, rot, frame, sky, floor, hres, halfvres, mod, maph, size, wall, mapc, exity, exitx):
+def new_frame(posx, posy, rot, frame, sky, floor, hres, halfvres, mod, maph, size, wall, mapc, exitx, exity):
     for i in range(hres):
-        rot_i = rot + numpy.deg2rad(i / mod - 30)
-        sin, cos, cos2 = numpy.sin(rot_i), numpy.cos(rot_i), numpy.cos(numpy.deg2rad(i / mod - 30))
-        frame[i][:] = sky[int(numpy.rad2deg(rot_i) % 359)][:]
+        rot_i = rot + np.deg2rad(i / mod - 30)
+        sin, cos, cos2 = np.sin(rot_i), np.cos(rot_i), np.cos(np.deg2rad(i / mod - 30))
+        frame[i][:] = sky[int(np.rad2deg(rot_i) * 2 % 718)][:]
 
         x, y = posx, posy
         while maph[int(x) % (size - 1)][int(y) % (size - 1)] == 0:
-            x, y = x + 0.02 * cos, y + 0.02 * sin
+            x, y = x + 0.01 * cos, y + 0.01 * sin
 
-        n = abs((x - posx) / cos)
+        n = np.sqrt((x - posx) ** 2 + (y - posy) ** 2)  # abs((x - posx)/cos)
         h = int(halfvres / (n * cos2 + 0.001))
 
         xx = int(x * 3 % 1 * 99)
         if x % 1 < 0.02 or x % 1 > 0.98:
             xx = int(y * 3 % 1 * 99)
-        yy = numpy.linspace(0, 108, h * 2) % 99
+        yy = np.linspace(0, 3, h * 2) * 99 % 99
 
         shade = 0.3 + 0.7 * (h / halfvres)
-        # fixes shading for certain walls
         if shade > 1:
             shade = 1
-        # wall shadows
+
+        ash = 0
+        if maph[int(x - 0.33) % (size - 1)][int(y - 0.33) % (size - 1)]:
+            ash = 1
+
         if maph[int(x - 0.01) % (size - 1)][int(y - 0.01) % (size - 1)]:
-            shade = shade * 0.5
+            shade, ash = shade * 0.5, 0
 
         c = shade * mapc[int(x) % (size - 1)][int(y) % (size - 1)]
-
         for k in range(h * 2):
-            if 0 <= halfvres - h + k < 2 * halfvres:
+            if halfvres - h + k >= 0 and halfvres - h + k < 2 * halfvres:
+                if ash and 1 - k / (2 * h) < 1 - xx / 99:
+                    c, ash = 0.5 * c, 0
                 frame[i][halfvres - h + k] = c * wall[xx][int(yy[k])]
+                if halfvres + 3 * h - k < halfvres * 2:
+                    frame[i][halfvres + 3 * h - k] = c * wall[xx][int(yy[k])]
 
-        for j in range(halfvres - h):
+        for j in range(halfvres - h):  # floor
             n = (halfvres / (halfvres - j)) / cos2
             x, y = posx + cos * n, posy + sin * n
-            xx, yy = int(x * 2 % 1 * 99), int(y * 2 % 1 * 99)
+            xx, yy = int(x * 3 % 1 * 99), int(y * 3 % 1 * 99)
 
             shade = 0.2 + 0.8 * (1 - j / halfvres)
-            # casting shadows to the floor
             if maph[int(x - 0.33) % (size - 1)][int(y - 0.33) % (size - 1)]:
                 shade = shade * 0.5
-            elif (maph[int(x - 0.33) % (size - 1)][int(y) % (size - 1)] and y % 1 > x % 1) or \
-                    (maph[int(x) % (size - 1)][int(y - 0.33) % (size - 1)] and x % 1 > y % 1):
+            elif ((maph[int(x - 0.33) % (size - 1)][int(y) % (size - 1)] and y % 1 > x % 1) or
+                  (maph[int(x) % (size - 1)][int(y - 0.33) % (size - 1)] and x % 1 > y % 1)):
                 shade = shade * 0.5
 
-            frame[i][halfvres * 2 - j - 1] = shade * (floor[xx][yy] + frame[i][halfvres * 2 - j - 1]) / 2
+            frame[i][halfvres * 2 - j - 1] = shade * (floor[xx][yy] * 2 + frame[i][halfvres * 2 - j - 1]) / 3
+
             if int(x) == exitx and int(y) == exity and (x % 1 - 0.5) ** 2 + (y % 1 - 0.5) ** 2 < 0.2:
                 ee = j / (10 * halfvres)
                 frame[i][j:2 * halfvres - j] = (ee * np.ones(3) + frame[i][j:2 * halfvres - j]) / (1 + ee)
 
-            # checking for walls
-
     return frame
 
 
-def get_sprites(hres, num_sprite_sheets):
-    sprites = []
+@njit()
+def sort_sprites(posx, posy, rot, enemies, maph, size, er):
+    for en in range(len(enemies)):
+        cos, sin = er * np.cos(enemies[en][6]), er * np.sin(enemies[en][6])
+        enx, eny = enemies[en][0] + cos, enemies[en][1] + sin
+        if (maph[int(enx - 0.1) % (size - 1)][int(eny - 0.1) % (size - 1)] or
+                maph[int(enx - 0.1) % (size - 1)][int(eny + 0.1) % (size - 1)] or
+                maph[int(enx + 0.1) % (size - 1)][int(eny - 0.1) % (size - 1)] or
+                maph[int(enx + 0.1) % (size - 1)][int(eny + 0.1) % (size - 1)]):
+            enx, eny = enemies[en][0], enemies[en][1]
+            enemies[en][6] = enemies[en][6] + np.random.uniform(-0.5, 0.5)
+        else:
+            enemies[en][0], enemies[en][1] = enx, eny
+        angle = np.arctan((eny - posy) / (enx - posx))
+        if abs(posx + np.cos(angle) - enx) > abs(posx - enx):
+            angle = (angle - np.pi) % (2 * np.pi)
+        angle2 = (rot - angle) % (2 * np.pi)
+        if angle2 > 10.5 * np.pi / 6 or angle2 < 1.5 * np.pi / 6:
+            dir2p = ((enemies[en][6] - angle - 3 * np.pi / 4) % (2 * np.pi)) / (np.pi / 2)
+            enemies[en][2] = angle2
+            enemies[en][7] = dir2p
+            enemies[en][3] = 1 / np.sqrt((enx - posx) ** 2 + (eny - posy) ** 2 + 1e-16)
+            cos, sin = (posx - enx) * enemies[en][3], (posy - eny) * enemies[en][3]
+            x, y = enx, eny
+            for i in range(int((1 / enemies[en][3]) / 0.05)):
+                x, y = x + 0.05 * cos, y + 0.05 * sin
+                if (maph[int(x - 0.02 * cos) % (size - 1)][int(y) % (size - 1)] or
+                        maph[int(x) % (size - 1)][int(y - 0.02 * sin) % (size - 1)]):
+                    enemies[en][3] = 9999
+                    break
+        else:
+            enemies[en][3] = 9999
 
-    for sheet_num in range(1, num_sprite_sheets + 1):
-        sheet_name = f"{sheet_num}ZombieSpriteSheet.png"
-        sheet = pygame.image.load(sheet_name).convert_alpha()
-        sprites.append([[], []])
+    enemies = enemies[enemies[:, 3].argsort()]
+    return enemies
 
-        xx = 0
-        for i in range(3):
-            sprites[sheet_num - 1][0].append([])
-            sprites[sheet_num - 1][1].append([])
-            for j in range(4):
-                yy = j * 100
-                sprites[sheet_num - 1][0][i].append(pygame.Surface.subsurface(sheet, (xx, yy, 32, 100)))
-                sprites[sheet_num - 1][1][i].append(pygame.Surface.subsurface(sheet, (xx + 96, yy, 32, 100)))
 
-            xx += 32
+def spawn_enemies(number, maph, msize):
+    enemies = []
+    for i in range(number):
+        x, y = np.random.uniform(1, msize - 2), np.random.uniform(1, msize - 2)
+        while (maph[int(x - 0.1) % (msize - 1)][int(y - 0.1) % (msize - 1)] or
+               maph[int(x - 0.1) % (msize - 1)][int(y + 0.1) % (msize - 1)] or
+               maph[int(x + 0.1) % (msize - 1)][int(y - 0.1) % (msize - 1)] or
+               maph[int(x + 0.1) % (msize - 1)][int(y + 0.1) % (msize - 1)]):
+            x, y = np.random.uniform(1, msize - 1), np.random.uniform(1, msize - 1)
+        angle2p, invdist2p, dir2p = 0, 0, 0  # angle, inv dist, dir2p relative to player
+        entype = np.random.choice([0, 1])  # 0 zombie, 1 skeleton
+        direction = np.random.uniform(0, 2 * np.pi)  # facing direction
+        size = np.random.uniform(7, 10)
+        enemies.append([x, y, angle2p, invdist2p, entype, size, direction, dir2p])
 
-    spsize = np.asarray(sprites[0][0][1][0].get_size()) * hres / 800
+    return np.asarray(enemies)
 
-    return sprites, spsize
+
+def get_sprites(hres):
+    sheet = pg.image.load('spritesheeet (1).png').convert_alpha()
+    sprites = [[], []]
+    swordsheet = pg.image.load('knifehand3.png').convert_alpha()
+    sword = []
+    for i in range(3):
+        subsword = pg.Surface.subsurface(swordsheet, (i * 800, 0, 800, 600))
+        sword.append(pg.transform.smoothscale(subsword, (hres, int(hres * 0.75))))
+        xx = i * 32
+        sprites[0].append([])
+        sprites[1].append([])
+        for j in range(4):
+            yy = j * 100
+            sprites[0][i].append(pg.Surface.subsurface(sheet, (xx, yy, 32, 100)))
+            sprites[1][i].append(pg.Surface.subsurface(sheet, (xx + 96, yy, 32, 100)))
+
+    spsize = np.asarray(sprites[0][1][0].get_size()) * hres / 800
+
+    sword.append(sword[1])  # extra middle frame
+    swordsp = 0  # current sprite for the sword
+
+    return sprites, spsize, sword, swordsp
+
+
+def draw_sprites(surf, sprites, enemies, spsize, hres, halfvres, ticks, sword, swordsp):
+    # enemies : x, y, angle2p, dist2p, type, size, direction, dir2p
+    cycle = int(ticks) % 3  # animation cycle for monsters
+    for en in range(len(enemies)):
+        if enemies[en][3] > 10:
+            break
+        types, dir2p = int(enemies[en][4]), int(enemies[en][7])
+        cos2 = np.cos(enemies[en][2])
+        scale = min(enemies[en][3], 2) * spsize * enemies[en][5] / cos2
+        vert = halfvres + halfvres * min(enemies[en][3], 2) / cos2
+        hor = hres / 2 - hres * np.sin(enemies[en][2])
+        spsurf = pg.transform.scale(sprites[types][cycle][dir2p], scale)
+        surf.blit(spsurf, (hor, vert) - scale / 2)
+
+    """
+    swordpos = (np.sin(ticks) * 10 * hres / 800, (np.cos(ticks) * 10 + 15) * hres / 800)  # sword shake
+    surf.blit(sword[int(swordsp)], swordpos)
+   """
+    """
+    # Draw sword at the bottom right corner, scaled down
+    sword_scale = 0.5  # Adjust the scale factor as needed
+    sword_size = (hres * sword_scale, int(hres * 0.75 * sword_scale))
+    swordpos = (surf.get_width() - sword_size[0], surf.get_height() - sword_size[1])
+    surf.blit(pg.transform.scale(sword[int(swordsp)], sword_size), swordpos)
+    """
+    sword_scale = 0.75  # Adjust the scale factor as needed
+    sword_size = (hres * sword_scale, int(hres * 0.75 * sword_scale))
+    swordpos = (surf.get_width() - sword_size[0] - (-30), surf.get_height() - sword_size[1] - (-22))
+    surf.blit(pg.transform.scale(sword[int(swordsp)], sword_size), swordpos)
+
+    return surf, en - 1
+
 
 def options():
     running = True
@@ -268,17 +379,38 @@ def options():
         menu_screen.fill((0, 0, 0))
 
         draw_text('Options', font, (255, 255, 255), menu_screen, menu_screen.get_width() // 2, 50)
-        for event in pygame.event.get():
+        for event in pg.event.get():
             if event.type == QUIT:
-                pygame.quit()
+                pg.quit()
                 sys.exit()
             if event.type == KEYDOWN:
                 if event.key == K_ESCAPE:
                     running = False
 
-        pygame.display.update()
+        pg.display.update()
+        mainClock.tick(60)
+
+def death_screen():
+    running = True
+    while running:
+        menu_screen.fill((0, 0, 0))
+
+        draw_text('DEAD LOL', font, (255, 255, 255), menu_screen, menu_screen.get_width() // 2, 50)
+        for event in pg.event.get():
+            if event.type == QUIT:
+                pg.quit()
+                sys.exit()
+            if event.type == KEYDOWN:
+                if event.key == K_ESCAPE:
+                    running = False
+
+        pg.display.update()
         mainClock.tick(60)
 
 
+
 if __name__ == '__main__':
-    main_menu()
+    main()
+    pg.quit()
+
+
