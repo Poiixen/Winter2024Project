@@ -87,10 +87,10 @@ def open_game_window():
     rotv = 0
 
     frame = np.random.uniform(0, 1, (hres, halfvres * 2, 3))
-    sky = pg.image.load('skybox.png')
+    sky = pg.image.load('assets/skybox.png')
     sky = pg.surfarray.array3d(pg.transform.smoothscale(sky, (720, halfvres * 2))) / 255
-    floor = pg.surfarray.array3d(pg.image.load('floor.jpg')) / 255
-    wall = pg.surfarray.array3d(pg.image.load('wall.jpg')) / 255
+    floor = pg.surfarray.array3d(pg.image.load('assets/floor.jpg')) / 255
+    wall = pg.surfarray.array3d(pg.image.load('assets/wall.jpg')) / 255
     sprites, spsize, sword, swordsp = get_sprites(hres)
 
     enemies = spawn_enemies(nenemies, maph, size)
@@ -317,9 +317,9 @@ def spawn_enemies(number, maph, msize):
 
 
 def get_sprites(hres):
-    sheet = pg.image.load('spritesheeet (1).png').convert_alpha()
+    sheet = pg.image.load('assets/spritesheeet (1).png').convert_alpha()
     sprites = [[], []]
-    swordsheet = pg.image.load('knifehand3.png').convert_alpha()
+    swordsheet = pg.image.load('assets/knifehand3.png').convert_alpha()
     sword = []
     for i in range(3):
         subsword = pg.Surface.subsurface(swordsheet, (i * 800, 0, 800, 600))
